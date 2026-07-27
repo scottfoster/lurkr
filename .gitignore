@@ -1,0 +1,17 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.resolved
+
+# Build output from make-app.sh
+build/
+Lurkr.app/
+
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+DerivedData/
+*.xcuserstate
+
+# macOS
+.DS_Store
