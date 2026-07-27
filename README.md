@@ -39,7 +39,17 @@ The menu bar icon is monochrome when nobody's on, purple when someone is. That's
 
 ## Install
 
-Lurkr isn't notarized or on the App Store, so build it yourself — it takes about 30 seconds.
+### Download
+
+Grab the latest zip from [Releases](https://github.com/scottfoster/lurkr/releases/latest), unzip it, and drag `Lurkr.app` to `/Applications`.
+
+The build isn't notarized yet, so macOS blocks it the first time you open it. Open **System Settings → Privacy & Security**, scroll to **Security**, and click **Open Anyway**. (On macOS 15 and later, Control-clicking the app no longer works — System Settings is the only route.) You only do this once.
+
+Prebuilt zips are **Apple Silicon only**. On an Intel Mac, build from source.
+
+### Build from source
+
+Takes about 30 seconds, and locally built apps are never quarantined — no Gatekeeper prompt at all.
 
 ```bash
 git clone https://github.com/scottfoster/lurkr.git
