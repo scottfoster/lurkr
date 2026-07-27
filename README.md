@@ -43,13 +43,13 @@ The menu bar icon is monochrome when nobody's on, purple when someone is. That's
 
 Grab the latest zip from [Releases](https://github.com/scottfoster/lurkr/releases/latest), unzip it, and drag `Lurkr.app` to `/Applications`.
 
-The build isn't notarized yet, so macOS blocks it the first time you open it. Open **System Settings → Privacy & Security**, scroll to **Security**, and click **Open Anyway**. (On macOS 15 and later, Control-clicking the app no longer works — System Settings is the only route.) You only do this once.
+Signed with a Developer ID certificate and notarized by Apple, so it opens with no security warnings.
 
 Prebuilt zips are **Apple Silicon only**. On an Intel Mac, build from source.
 
 ### Build from source
 
-Takes about 30 seconds, and locally built apps are never quarantined — no Gatekeeper prompt at all.
+Takes about 30 seconds.
 
 ```bash
 git clone https://github.com/scottfoster/lurkr.git
@@ -181,11 +181,22 @@ There are no image assets in this repo — both the menu bar glyph and the app i
 
 ### Signing
 
-`make-app.sh` ad-hoc signs by default. For a Developer ID build:
+`make-app.sh` ad-hoc signs by default, which is fine for local use. For a Developer ID build:
 
 ```bash
 SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./make-app.sh
 ```
+
+To cut a release build — signed, notarized, stapled, and zipped for distribution:
+
+```bash
+xcrun notarytool store-credentials lurkr-notary \
+    --apple-id you@example.com --team-id TEAMID    # one time only
+
+SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./make-app.sh --dist
+```
+
+That produces `Lurkr-<version>-arm64.zip` with the notarization ticket stapled into the bundle, so Gatekeeper clears it even on a machine that's offline. Bump `VERSION` in `make-app.sh` first — it feeds both the bundle's `CFBundleShortVersionString` and the zip filename.
 
 Entitlements are in [`Lurkr.entitlements`](Lurkr.entitlements): App Sandbox plus outgoing network connections, nothing else.
 
