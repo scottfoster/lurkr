@@ -12,24 +12,42 @@ BUILD_DIR="$PROJECT_DIR/build"
 ICONSET_DIR="$BUILD_DIR/AppIcon.iconset"
 ENTITLEMENTS="$PROJECT_DIR/Lurkr.entitlements"
 PRIVACY_MANIFEST="$PROJECT_DIR/PrivacyInfo.xcprivacy"
+VERSION="1.0.0"
 
 # Signing: defaults to ad-hoc ("-"). For App Store / Developer ID builds, set:
 #   SIGNING_IDENTITY="Apple Distribution: Your Name (TEAMID)"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
 
+# Keychain profile holding notarization credentials, created once via:
+#   xcrun notarytool store-credentials
+NOTARY_PROFILE="${NOTARY_PROFILE:-lurkr-notary}"
+
 # Args: --install moves the built bundle to /Applications and launches it.
 INSTALL=false
+DIST=false
 for arg in "$@"; do
     case "$arg" in
         --install) INSTALL=true ;;
+        --dist) DIST=true ;;
         -h|--help)
-            echo "Usage: $0 [--install]"
+            echo "Usage: $0 [--install] [--dist]"
             echo "  --install  Quit any running Lurkr, move the bundle to /Applications, and launch it."
+            echo "  --dist     Notarize, staple, and produce a distributable zip."
+            echo "             Requires SIGNING_IDENTITY set to a Developer ID Application cert."
             exit 0
             ;;
         *) echo "Unknown arg: $arg" >&2; exit 1 ;;
     esac
 done
+
+if [ "$DIST" = true ] && [ "$SIGNING_IDENTITY" = "-" ]; then
+    echo "Error: --dist cannot notarize an ad-hoc signature." >&2
+    echo "Set a Developer ID identity first, e.g.:" >&2
+    echo "  SIGNING_IDENTITY=\"Developer ID Application: Scott Foster (8PML37YH4W)\" $0 --dist" >&2
+    echo "Available identities:" >&2
+    security find-identity -v -p codesigning >&2
+    exit 1
+fi
 
 echo "→ Building release binary"
 cd "$PROJECT_DIR"
@@ -62,7 +80,7 @@ cat > "$CONTENTS/Info.plist" <<EOF
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
@@ -74,18 +92,53 @@ cat > "$CONTENTS/Info.plist" <<EOF
 EOF
 
 echo "→ Code signing ($SIGNING_IDENTITY)"
-codesign \
-    --force \
-    --deep \
-    --options runtime \
-    --entitlements "$ENTITLEMENTS" \
-    --sign "$SIGNING_IDENTITY" \
-    "$APP_DIR"
+CODESIGN_ARGS=(
+    --force
+    --deep
+    --options runtime
+    --entitlements "$ENTITLEMENTS"
+    --sign "$SIGNING_IDENTITY"
+)
+# Notarization requires a secure timestamp, which an ad-hoc signature cannot carry.
+if [ "$SIGNING_IDENTITY" != "-" ]; then
+    CODESIGN_ARGS+=(--timestamp)
+fi
+codesign "${CODESIGN_ARGS[@]}" "$APP_DIR"
 
 rm -rf "$BUILD_DIR"
 
 echo ""
 echo "✓ Built: $APP_DIR"
+
+if [ "$DIST" = true ]; then
+    ZIP_PATH="$PROJECT_DIR/$APP_NAME-$VERSION-arm64.zip"
+
+    echo ""
+    echo "→ Zipping for notarization"
+    rm -f "$ZIP_PATH"
+    ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$ZIP_PATH"
+
+    echo "→ Submitting to Apple (usually a few minutes)"
+    xcrun notarytool submit "$ZIP_PATH" \
+        --keychain-profile "$NOTARY_PROFILE" \
+        --wait
+
+    echo "→ Stapling ticket"
+    xcrun stapler staple "$APP_DIR"
+
+    # Stapling writes the ticket into the bundle, so the shipped zip must be
+    # rebuilt from the stapled copy — the pre-staple zip is not notarized on disk.
+    echo "→ Rebuilding zip from stapled bundle"
+    rm -f "$ZIP_PATH"
+    ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$ZIP_PATH"
+
+    echo "→ Verifying Gatekeeper acceptance"
+    xcrun stapler validate "$APP_DIR"
+    spctl -a -vvv -t install "$APP_DIR"
+
+    echo ""
+    echo "✓ Notarized and stapled: $ZIP_PATH"
+fi
 
 if [ "$INSTALL" = true ]; then
     echo ""
