@@ -20,6 +20,7 @@ final class MainPopoverViewController: NSViewController {
     private var lastRefresh: Date?
     private var isRefreshing = false
     private var hasConnectionError = false
+    private var notificationIssue: Notifications.DeliveryError?
 
     // MARK: - Layout constants
     private static let width: CGFloat = 320
@@ -30,13 +31,14 @@ final class MainPopoverViewController: NSViewController {
     private let addStatusLabel = NSTextField(labelWithString: "")
     private let addSpinner = NSProgressIndicator()
 
-    func setContent(streams: [Stream], favorites: [String], lastSeenLive: [String: Date], lastRefresh: Date?, isRefreshing: Bool, hasConnectionError: Bool) {
+    func setContent(streams: [Stream], favorites: [String], lastSeenLive: [String: Date], lastRefresh: Date?, isRefreshing: Bool, hasConnectionError: Bool, notificationIssue: Notifications.DeliveryError? = nil) {
         self.streams = streams
         self.favorites = favorites
         self.lastSeenLive = lastSeenLive
         self.lastRefresh = lastRefresh
         self.isRefreshing = isRefreshing
         self.hasConnectionError = hasConnectionError
+        self.notificationIssue = notificationIssue
         if isViewLoaded {
             rebuild()
             preferredContentSize = NSSize(width: Self.width, height: contentHeight())
@@ -48,6 +50,7 @@ final class MainPopoverViewController: NSViewController {
     private func contentHeight() -> CGFloat {
         var h: CGFloat = 4 // top spacer
         if hasConnectionError { h += 30 }
+        if notificationIssue != nil { h += 80 }
         if !streams.isEmpty {
             h += 22 + 4                              // LIVE NOW section label
             h += CGFloat(streams.count) * 60         // stream cards
@@ -107,6 +110,9 @@ final class MainPopoverViewController: NSViewController {
         if hasConnectionError {
             rootStack.addArrangedSubview(makeConnectionBanner())
         }
+        if let notificationIssue {
+            rootStack.addArrangedSubview(makeNotificationBanner(notificationIssue))
+        }
 
         if !streams.isEmpty {
             rootStack.addArrangedSubview(makeSectionLabel("LIVE NOW", topPad: 4))
@@ -146,6 +152,44 @@ final class MainPopoverViewController: NSViewController {
 
     // MARK: - Builders
 
+    private func makeNotificationBanner(_ issue: Notifications.DeliveryError) -> NSView {
+        let banner = NSView()
+        banner.translatesAutoresizingMaskIntoConstraints = false
+        banner.wantsLayer = true
+        banner.layer?.backgroundColor = NSColor.systemOrange.withAlphaComponent(0.12).cgColor
+
+        let title = NSTextField(labelWithString: issue.title)
+        title.font = .systemFont(ofSize: 11, weight: .semibold)
+        title.textColor = .labelColor
+        title.translatesAutoresizingMaskIntoConstraints = false
+        banner.addSubview(title)
+
+        let helper = NSTextField(labelWithString: "Go-live banners may not appear.")
+        helper.font = .systemFont(ofSize: 11)
+        helper.textColor = .secondaryLabelColor
+        helper.translatesAutoresizingMaskIntoConstraints = false
+        banner.addSubview(helper)
+
+        let button = NSButton(title: "Set up notifications…", target: self, action: #selector(settingsClicked))
+        button.bezelStyle = .rounded
+        button.controlSize = .small
+        button.translatesAutoresizingMaskIntoConstraints = false
+        banner.addSubview(button)
+
+        NSLayoutConstraint.activate([
+            banner.widthAnchor.constraint(equalToConstant: Self.width),
+            banner.heightAnchor.constraint(equalToConstant: 80),
+            title.leadingAnchor.constraint(equalTo: banner.leadingAnchor, constant: 14),
+            title.trailingAnchor.constraint(lessThanOrEqualTo: banner.trailingAnchor, constant: -14),
+            title.topAnchor.constraint(equalTo: banner.topAnchor, constant: 8),
+            helper.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+            helper.topAnchor.constraint(equalTo: title.bottomAnchor, constant: 2),
+            button.leadingAnchor.constraint(equalTo: title.leadingAnchor),
+            button.bottomAnchor.constraint(equalTo: banner.bottomAnchor, constant: -8),
+        ])
+        return banner
+    }
+
     private func makeConnectionBanner() -> NSView {
         let v = NSView()
         v.translatesAutoresizingMaskIntoConstraints = false
@@ -158,7 +202,7 @@ final class MainPopoverViewController: NSViewController {
         icon.translatesAutoresizingMaskIntoConstraints = false
         v.addSubview(icon)
 
-        let label = NSTextField(wrappingLabelWithString: "Can't reach decapi.me. Live status may be stale.")
+        let label = NSTextField(wrappingLabelWithString: "Couldn't check some channels. Live status may be stale.")
         label.font = .systemFont(ofSize: 11)
         label.textColor = .labelColor
         label.translatesAutoresizingMaskIntoConstraints = false

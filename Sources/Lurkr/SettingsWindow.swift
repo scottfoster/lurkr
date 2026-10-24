@@ -2,10 +2,13 @@ import Cocoa
 import ServiceManagement
 
 @MainActor
-final class SettingsWindowController: NSWindowController {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
     var onConfigChanged: ((Config) -> Void)?
     var onToggleLaunchAtLogin: (() -> Void)?
-    var onSendTestNotification: (() -> Void)?
+    var onSendTestNotification: (() async -> Bool)?
+    var onRefreshNotificationStatus: (() -> Void)?
+    var onResolveNotificationIssue: (() -> Void)?
+    var onOpenFocusSettings: (() -> Void)?
     var onShowAbout: (() -> Void)?
 
     private var currentConfig: Config
@@ -15,6 +18,11 @@ final class SettingsWindowController: NSWindowController {
     private let browserPopup = NSPopUpButton()
     private let launchAtLoginSwitch = NSSwitch()
     private let notifySwitch = NSSwitch()
+    private let rootStack = NSStackView()
+    private let notificationStatus = NSTextField(labelWithString: "Checking notification settings…")
+    private let notificationHelper = NSTextField(wrappingLabelWithString: "")
+    private let notificationAction = NSButton()
+    private var notificationIssue: Notifications.DeliveryError?
 
     private static let intervalChoices: [(label: String, seconds: Int)] = [
         ("30 seconds", 30),
@@ -36,6 +44,7 @@ final class SettingsWindowController: NSWindowController {
         win.isReleasedWhenClosed = false
         win.center()
         super.init(window: win)
+        win.delegate = self
         buildUI()
         loadFromConfig()
     }
@@ -52,6 +61,26 @@ final class SettingsWindowController: NSWindowController {
         loadFromConfig()
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
+        onRefreshNotificationStatus?()
+    }
+
+    func updateNotificationIssue(_ issue: Notifications.DeliveryError?) {
+        notificationIssue = issue
+        if let issue {
+            notificationStatus.stringValue = issue.title
+            notificationHelper.stringValue = issue.instructions
+            notificationStatus.textColor = .systemOrange
+        } else if !currentConfig.notificationsEnabled {
+            notificationStatus.stringValue = "Go-live notifications are off in Lurkr"
+            notificationHelper.stringValue = "Turn on Notify on go-live above to receive alerts. You can still send a test."
+            notificationStatus.textColor = .secondaryLabelColor
+        } else {
+            notificationStatus.stringValue = "Notification setup"
+            notificationHelper.stringValue = "Send a test to check your setup. A submitted test means macOS accepted it, not that a banner appeared."
+            notificationStatus.textColor = .secondaryLabelColor
+        }
+        notificationAction.title = issue?.needsAuthorization == true ? "Allow Notifications…" : "Open Notification Settings…"
+        resizeToFit()
     }
 
     private func buildUI() {
@@ -82,19 +111,19 @@ final class SettingsWindowController: NSWindowController {
         notifySwitch.target = self
         notifySwitch.action = #selector(notificationsChanged)
 
-        // Notifications row carries the switch + a small "Send test" button stacked together.
         let notifyCluster = NSStackView()
         notifyCluster.orientation = .horizontal
         notifyCluster.spacing = 8
         notifyCluster.alignment = .centerY
         notifyCluster.translatesAutoresizingMaskIntoConstraints = false
-        let testBtn = NSButton(title: "Send test", target: self, action: #selector(testNotificationClicked))
+        let testBtn = NSButton(title: "Send test", target: self, action: #selector(testNotificationClicked(_:)))
         testBtn.bezelStyle = .rounded
         testBtn.controlSize = .small
+        testBtn.toolTip = "Send a test banner. Focus or Do Not Disturb can still silence it."
         notifyCluster.addArrangedSubview(testBtn)
         notifyCluster.addArrangedSubview(notifySwitch)
 
-        let root = NSStackView()
+        let root = rootStack
         root.orientation = .vertical
         root.alignment = .leading
         root.distribution = .gravityAreas
@@ -135,6 +164,7 @@ final class SettingsWindowController: NSWindowController {
                 makeRow(title: "Notify on go-live",
                         helper: "Show a banner when a favorite starts streaming.",
                         control: notifyCluster),
+                makeNotificationGuide(),
             ]
         ))
 
@@ -152,6 +182,64 @@ final class SettingsWindowController: NSWindowController {
             ]
         )
         root.addArrangedSubview(aboutBtn)
+    }
+
+    private func makeNotificationGuide() -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
+        let stack = NSStackView()
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 8
+        stack.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(stack)
+
+        notificationStatus.font = .systemFont(ofSize: 12, weight: .semibold)
+        notificationHelper.font = .systemFont(ofSize: 11)
+        notificationHelper.textColor = .secondaryLabelColor
+        notificationHelper.translatesAutoresizingMaskIntoConstraints = false
+        notificationHelper.widthAnchor.constraint(equalToConstant: 356).isActive = true
+        stack.addArrangedSubview(notificationStatus)
+        stack.addArrangedSubview(notificationHelper)
+
+        let focusHelp = NSTextField(wrappingLabelWithString: "No banner after a test? Check Notification Center. In Focus Settings, allow Lurkr under Apps or turn Focus off, then send another test.")
+        focusHelp.font = .systemFont(ofSize: 11)
+        focusHelp.textColor = .secondaryLabelColor
+        focusHelp.translatesAutoresizingMaskIntoConstraints = false
+        focusHelp.widthAnchor.constraint(equalToConstant: 356).isActive = true
+        stack.addArrangedSubview(focusHelp)
+
+        let actions = NSStackView()
+        actions.orientation = .horizontal
+        actions.spacing = 8
+        notificationAction.target = self
+        notificationAction.action = #selector(notificationSetupClicked)
+        notificationAction.bezelStyle = .rounded
+        notificationAction.controlSize = .small
+        actions.addArrangedSubview(notificationAction)
+        let focusAction = NSButton(title: "Focus Settings…", target: self, action: #selector(focusSettingsClicked))
+        focusAction.bezelStyle = .rounded
+        focusAction.controlSize = .small
+        actions.addArrangedSubview(focusAction)
+        stack.addArrangedSubview(actions)
+
+        NSLayoutConstraint.activate([
+            stack.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 16),
+            stack.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -16),
+            stack.topAnchor.constraint(equalTo: container.topAnchor),
+            stack.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
+        ])
+        return container
+    }
+
+    private func resizeToFit() {
+        guard let window else { return }
+        window.contentView?.layoutSubtreeIfNeeded()
+        let oldTop = window.frame.maxY
+        window.setContentSize(NSSize(width: 440, height: max(420, ceil(rootStack.fittingSize.height))))
+        var frame = window.frame
+        frame.origin.y = oldTop - frame.height
+        window.setFrame(window.constrainFrameRect(frame, to: window.screen ?? NSScreen.main), display: window.isVisible)
     }
 
     // MARK: - Section / row builders
@@ -265,6 +353,7 @@ final class SettingsWindowController: NSWindowController {
 
         notifySwitch.state = currentConfig.notificationsEnabled ? .on : .off
         launchAtLoginSwitch.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
+        updateNotificationIssue(notificationIssue)
     }
 
     @objc private func intervalChanged() {
@@ -282,6 +371,7 @@ final class SettingsWindowController: NSWindowController {
     @objc private func notificationsChanged() {
         currentConfig.notificationsEnabled = (notifySwitch.state == .on)
         onConfigChanged?(currentConfig)
+        updateNotificationIssue(notificationIssue)
     }
 
     @objc private func launchAtLoginChanged() {
@@ -291,8 +381,30 @@ final class SettingsWindowController: NSWindowController {
         launchAtLoginSwitch.state = (SMAppService.mainApp.status == .enabled) ? .on : .off
     }
 
-    @objc private func testNotificationClicked() {
-        onSendTestNotification?()
+    @objc private func testNotificationClicked(_ sender: NSButton) {
+        guard let onSendTestNotification else { return }
+        sender.isEnabled = false
+        sender.title = "Sending…"
+        Task { @MainActor in
+            let sent = await onSendTestNotification()
+            self.onRefreshNotificationStatus?()
+            sender.title = sent ? "Submitted" : "Failed"
+            try? await Task.sleep(for: .seconds(2))
+            sender.title = "Send test"
+            sender.isEnabled = true
+        }
+    }
+
+    @objc private func notificationSetupClicked() {
+        onResolveNotificationIssue?()
+    }
+
+    @objc private func focusSettingsClicked() {
+        onOpenFocusSettings?()
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        onRefreshNotificationStatus?()
     }
 
     @objc private func aboutClicked() {

@@ -103,7 +103,13 @@ When a favorite starts streaming, you get a native banner. Clicking it opens the
 <img src="docs/screenshots/notification.png" width="420" alt="Go-live notification banner">
 </div>
 
-Lurkr deliberately stays quiet on the first refresh after launch — otherwise every already-live streamer would fire a banner the moment you log in.
+Lurkr deliberately stays quiet on the first successful status check for each favorite — otherwise every already-live streamer would fire a banner the moment you log in. Failed checks leave the last known status unchanged, so an outage recovering doesn't trigger false go-live alerts.
+
+If go-live alerts are enabled but macOS blocks notifications or banners, the popover shows a warning with a **Set up notifications** button. Settings explains how to allow notifications and choose Banners or Alerts, with an **Open Notification Settings** button that opens Lurkr's macOS settings. If macOS opens a different page, go to System Settings → Notifications → Lurkr. The warning updates when you return to Lurkr.
+
+**Send test** checks permissions and shows delivery errors in Settings. “Submitted” means macOS accepted the notification, not that a banner appeared. If no banner appears, check Notification Center and use **Focus Settings** to allow Lurkr under Apps or turn Focus off, then send another test.
+
+Real go-live notifications check authorization and show submission failures in the popover and Settings, as well as Console under subsystem `com.singlepeel.lurkr`, category `Notifications`. They respect your notification presentation settings; disabling banners doesn't by itself prevent delivery to Notification Center. Lurkr doesn't bypass Focus or replay alerts missed while notifications were disabled.
 
 ## How it works
 
@@ -125,7 +131,7 @@ Thumbnails come straight from Twitch's public preview CDN (`static-cdn.jtvnw.net
 A couple of details worth knowing:
 
 - **Last-seen backfill.** For an offline favorite Lurkr has never observed going live, it grabs their most recent VOD URL and reads the `og:video:release_date` meta tag off that page — so "2d ago" is right even on a fresh install.
-- **Connection banner.** If more than half of a refresh's requests fail, the popover shows an orange "Can't reach decapi.me" warning rather than silently claiming everyone is offline.
+- **Connection banner.** If a channel's status check fails or returns an unrecognized response, the popover shows an orange warning and keeps its last known status rather than silently claiming it's offline. A live response is still accepted when optional title, category, viewer-count, or thumbnail requests fail.
 - **Be polite.** Every favorite costs a handful of requests per refresh. decapi is someone else's free service — a long list on a 30-second interval is not neighborly.
 
 ## Configuration
@@ -155,6 +161,7 @@ Unknown or missing keys fall back to defaults, so configs written by older versi
 ```bash
 swift build            # debug build
 swift run              # run unsandboxed, straight from the terminal
+swift test             # notification delivery and live-status regression tests (no real alerts)
 ./make-app.sh          # release build + .app bundle
 ```
 

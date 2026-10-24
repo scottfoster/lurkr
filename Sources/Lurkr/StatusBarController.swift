@@ -7,12 +7,14 @@ final class StatusBarController: NSObject {
     private let statusItem: NSStatusItem
     private let api = TwitchAPI()
     private var config: Config
-    private var liveStreams: [Stream] = []
+    private var liveStreams: [Stream] { liveStatusTracker.streams }
     private var pollTimer: Timer?
     private var lastRefresh: Date?
     private var isRefreshing = false
     private var hasConnectionError = false
-    private var hasCompletedFirstRefresh = false
+    private var liveStatusTracker = LiveStatusTracker()
+    private var notificationIssue: Notifications.DeliveryError?
+    private var isRequestingNotificationPermission = false
 
     private let popover = NSPopover()
     private let popoverVC = MainPopoverViewController()
@@ -49,6 +51,42 @@ final class StatusBarController: NSObject {
             name: NSApplication.didResignActiveNotification,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidBecomeActive(_:)),
+            name: NSApplication.didBecomeActiveNotification,
+            object: nil
+        )
+    }
+
+    @objc private func appDidBecomeActive(_ notification: Notification) {
+        Task { @MainActor in await self.refreshNotificationStatus() }
+    }
+
+    func requestNotificationAuthorization() {
+        guard !isRequestingNotificationPermission else { return }
+        isRequestingNotificationPermission = true
+        Task { @MainActor in
+            defer { self.isRequestingNotificationPermission = false }
+            do {
+                try await Notifications.requestAuthorization()
+            } catch {
+                self.notificationIssue = (error as? Notifications.DeliveryError) ?? .authorizationFailed(error.localizedDescription)
+                Notifications.logger.error("Notification authorization failed: \(error.localizedDescription, privacy: .public)")
+            }
+            await self.refreshNotificationStatus()
+        }
+    }
+
+    private func refreshNotificationStatus() async {
+        let settings = await NotificationClient.system.settings()
+        notificationIssue = Notifications.refreshedIssue(notificationIssue, settings: settings)
+        updateNotificationUI()
+    }
+
+    private func updateNotificationUI() {
+        settingsWindow?.updateNotificationIssue(notificationIssue)
+        rebuildPopover()
     }
 
     @objc private func appDidResignActive(_ notification: Notification) {
@@ -72,15 +110,20 @@ final class StatusBarController: NSObject {
         rebuildPopover()
         NSApp.activate(ignoringOtherApps: true)
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        Task { @MainActor in await self.refreshNotificationStatus() }
     }
 
-    private func sendTestNotification() {
-        Notifications.postGoLive(
-            displayName: "piratesoftware",
-            login: "piratesoftware",
-            game: "Path of Exile 2",
-            viewerCount: 1900
-        )
+    private func sendTestNotification() async -> Bool {
+        do {
+            try await Notifications.sendTest()
+            notificationIssue = nil
+            await refreshNotificationStatus()
+            return true
+        } catch {
+            notificationIssue = (error as? Notifications.DeliveryError) ?? .submissionFailed(error.localizedDescription)
+            await refreshNotificationStatus()
+            return false
+        }
     }
 
     private func showAbout() {
@@ -103,16 +146,37 @@ final class StatusBarController: NSObject {
             self.applySettings(newConfig)
         }
         w.onToggleLaunchAtLogin = { [unowned self] in self.toggleLaunchAtLogin() }
-        w.onSendTestNotification = { [unowned self] in self.sendTestNotification() }
+        w.onSendTestNotification = { [unowned self] in await self.sendTestNotification() }
+        w.onRefreshNotificationStatus = { [weak self] in
+            Task { @MainActor in await self?.refreshNotificationStatus() }
+        }
+        w.onResolveNotificationIssue = { [unowned self] in
+            if self.notificationIssue?.needsAuthorization == true {
+                self.requestNotificationAuthorization()
+            } else if !Notifications.openNotificationSettings() {
+                self.showAlert(title: "Couldn't open Notification Settings",
+                               message: "Open System Settings → Notifications → Lurkr. Turn on Allow Notifications and choose Banners or Alerts, then return to Lurkr and send a test.")
+            }
+        }
+        w.onOpenFocusSettings = { [unowned self] in
+            if !Notifications.openFocusSettings() {
+                self.showAlert(title: "Couldn't open Focus Settings",
+                               message: "Open System Settings → Focus. Turn off the active Focus or allow notifications from Lurkr, then send another test.")
+            }
+        }
         w.onShowAbout = { [unowned self] in self.showAbout() }
         settingsWindow = w
+        w.updateNotificationIssue(notificationIssue)
         w.showAndFocus()
     }
 
     private func applySettings(_ newConfig: Config) {
         let intervalChanged = newConfig.pollIntervalSeconds != config.pollIntervalSeconds
+        let notificationsBecameEnabled = newConfig.notificationsEnabled && !config.notificationsEnabled
         config = newConfig
         config.save()
+        updateNotificationUI()
+        if notificationsBecameEnabled { requestNotificationAuthorization() }
         if intervalChanged { restartPollTimer() }
     }
 
@@ -148,52 +212,63 @@ final class StatusBarController: NSObject {
         rebuildPopover()
 
         let logins = config.favorites
-        let previousLive = Set(self.liveStreams.map { $0.userLogin.lowercased() })
         Task { @MainActor in
-            let streams = await self.api.liveStreams(logins: logins)
+            let statuses = await self.api.liveStreams(logins: logins)
+            let favorites = Set(self.config.favorites.map { $0.lowercased() })
+            let newlyLive = self.liveStatusTracker.update(statuses, favorites: favorites)
+            let streams = self.liveStreams
 
-            // Diff to find just-went-live before overwriting self.liveStreams.
-            let nowLiveByLogin: [String: Stream] = Dictionary(
-                uniqueKeysWithValues: streams.map { ($0.userLogin.lowercased(), $0) }
-            )
-            let newlyLive = Set(nowLiveByLogin.keys).subtracting(previousLive)
-            if self.hasCompletedFirstRefresh && self.config.notificationsEnabled {
-                for login in newlyLive {
-                    guard let s = nowLiveByLogin[login] else { continue }
-                    Notifications.postGoLive(
-                        displayName: s.userLogin,
-                        login: s.userLogin,
-                        game: s.gameName,
-                        viewerCount: s.viewerCount
-                    )
-                }
-            }
-
-            self.liveStreams = streams
             self.lastRefresh = Date()
             self.isRefreshing = false
-            self.hasConnectionError = await self.api.lastCallHadConnectionError
-            self.hasCompletedFirstRefresh = true
+            self.hasConnectionError = favorites.contains { login in
+                if case .unknown = statuses[login] ?? .unknown { return true }
+                return false
+            }
             let now = Date()
-            for stream in streams {
-                self.config.lastSeenLive[stream.userLogin.lowercased()] = now
+            for (login, status) in statuses where favorites.contains(login) {
+                if case .live = status { self.config.lastSeenLive[login] = now }
             }
             self.config.save()
             self.updateIcon()
             self.rebuildPopover()
 
+            if self.config.notificationsEnabled {
+                for stream in newlyLive {
+                    guard self.config.notificationsEnabled,
+                          self.config.favorites.contains(where: { $0.lowercased() == stream.userLogin.lowercased() }) else { continue }
+                    do {
+                        try await Notifications.postGoLive(
+                            displayName: stream.userLogin,
+                            login: stream.userLogin,
+                            game: stream.gameName,
+                            viewerCount: stream.viewerCount
+                        )
+                        self.notificationIssue = nil
+                    } catch {
+                        self.notificationIssue = .submissionFailed(error.localizedDescription)
+                        Notifications.logger.error("Go-live notification failed: \(error.localizedDescription, privacy: .public)")
+                    }
+                    await self.refreshNotificationStatus()
+                }
+            }
+
             // Backfill "last live" for offline favorites we've never observed,
             // by scraping the og:video:release_date from their most recent VOD.
             let liveSet = Set(streams.map { $0.userLogin.lowercased() })
-            let needsBackfill = logins.filter { fav in
+            let needsBackfill = self.config.favorites.filter { fav in
                 let key = fav.lowercased()
-                return !liveSet.contains(key) && self.config.lastSeenLive[key] == nil
+                if case .offline = statuses[key] {
+                    return !liveSet.contains(key) && self.config.lastSeenLive[key] == nil
+                }
+                return false
             }
             guard !needsBackfill.isEmpty else { return }
             Task { @MainActor in
                 var changed = false
                 for fav in needsBackfill {
                     if let date = await self.api.lastStreamDate(login: fav) {
+                        guard self.config.favorites.contains(where: { $0.lowercased() == fav.lowercased() }),
+                              self.config.lastSeenLive[fav.lowercased()] == nil else { continue }
                         self.config.lastSeenLive[fav.lowercased()] = date
                         changed = true
                     }
@@ -217,7 +292,8 @@ final class StatusBarController: NSObject {
             lastSeenLive: config.lastSeenLive,
             lastRefresh: lastRefresh,
             isRefreshing: isRefreshing,
-            hasConnectionError: hasConnectionError
+            hasConnectionError: hasConnectionError,
+            notificationIssue: config.notificationsEnabled ? notificationIssue : nil
         )
         if popover.isShown {
             popover.contentSize = popoverVC.preferredContentSize
@@ -313,6 +389,6 @@ extension StatusBarController: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification,
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
-        completionHandler([.banner, .sound])
+        completionHandler([.banner, .list, .sound])
     }
 }

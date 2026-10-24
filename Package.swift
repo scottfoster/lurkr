@@ -6,5 +6,6 @@ let package = Package(
     platforms: [.macOS(.v13)],
     targets: [
         .executableTarget(name: "Lurkr"),
+        .testTarget(name: "LurkrTests", dependencies: ["Lurkr"]),
     ]
 )
