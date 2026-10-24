@@ -235,7 +235,11 @@ final class StatusBarController: NSObject {
     /// Opens a URL in the user's selected browser (Config.browser). Falls back to
     /// the system default browser if the chosen app isn't installed.
     func openInPreferredBrowser(_ url: URL) {
-        let appPath = URL(fileURLWithPath: config.browser.appPath)
+        guard let path = config.browser.appPath else {
+            NSWorkspace.shared.open(url)
+            return
+        }
+        let appPath = URL(fileURLWithPath: path)
         if FileManager.default.fileExists(atPath: appPath.path) {
             NSWorkspace.shared.open([url], withApplicationAt: appPath, configuration: NSWorkspace.OpenConfiguration())
         } else {

@@ -33,7 +33,7 @@ The menu bar icon is monochrome when nobody's on, purple when someone is. That's
 | 📺 **Live cards**         | Stream thumbnail, category, viewer count and uptime — sorted by viewers                     |
 | 🔔 **Go-live banners**    | Native notifications when a favorite starts; click one to open the stream                   |
 | 🕓 **Last seen live**     | Offline favorites show when they last streamed, backfilled from their most recent VOD       |
-| 🌐 **Your browser**       | Opens streams in Safari, Chrome, or Firefox — your pick, not the system default             |
+| 🌐 **Your browser**       | Uses your system default browser, with optional Safari, Chrome, or Firefox overrides        |
 | 🔒 **No account needed**  | No Twitch login, no OAuth, no API keys, no tracking — sandboxed, network-client only        |
 | 🪶 **Tiny**               | Pure AppKit, zero third-party dependencies, ~2k lines of Swift                              |
 
@@ -91,7 +91,7 @@ A purple dot means live; grey means offline, with the last time they streamed on
 | Setting              | Options                                | Default  |
 | -------------------- | -------------------------------------- | -------- |
 | **Refresh interval** | 30 seconds, 1, 2, or 5 minutes         | 1 minute |
-| **Open streams in**  | Safari, Chrome, Firefox                | Safari   |
+| **Open streams in**  | System default, Safari, Chrome, Firefox | System default |
 | **Launch at login**  | On / off (requires install to `/Applications`) | Off      |
 | **Notify on go-live**| On / off, with a **Send test** button  | On       |
 
@@ -144,7 +144,7 @@ The app is sandboxed, so that container path *is* its home directory. When you r
   "lastSeenLive": { "shroud": "2026-07-24T17:44:21Z" },
   "pollIntervalSeconds": 60,
   "notificationsEnabled": true,
-  "browser": "safari"
+  "browser": "systemDefault"
 }
 ```
 

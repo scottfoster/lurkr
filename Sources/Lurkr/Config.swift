@@ -1,10 +1,11 @@
 import Foundation
 
 enum Browser: String, Codable, CaseIterable {
-    case safari, chrome, firefox
+    case systemDefault, safari, chrome, firefox
 
-    var appPath: String {
+    var appPath: String? {
         switch self {
+        case .systemDefault: return nil
         case .safari:  return "/Applications/Safari.app"
         case .chrome:  return "/Applications/Google Chrome.app"
         case .firefox: return "/Applications/Firefox.app"
@@ -13,6 +14,7 @@ enum Browser: String, Codable, CaseIterable {
 
     var displayName: String {
         switch self {
+        case .systemDefault: return "System default"
         case .safari:  return "Safari"
         case .chrome:  return "Chrome"
         case .firefox: return "Firefox"
@@ -25,7 +27,7 @@ struct Config: Codable {
     var lastSeenLive: [String: Date] = [:]
     var pollIntervalSeconds: Int = 60
     var notificationsEnabled: Bool = true
-    var browser: Browser = .safari
+    var browser: Browser = .systemDefault
 
     init() {}
 
@@ -36,7 +38,7 @@ struct Config: Codable {
         lastSeenLive = (try? c.decodeIfPresent([String: Date].self, forKey: .lastSeenLive)) ?? [:]
         pollIntervalSeconds = (try? c.decodeIfPresent(Int.self, forKey: .pollIntervalSeconds)) ?? 60
         notificationsEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .notificationsEnabled)) ?? true
-        browser = (try? c.decodeIfPresent(Browser.self, forKey: .browser)) ?? .safari
+        browser = (try? c.decodeIfPresent(Browser.self, forKey: .browser)) ?? .systemDefault
     }
 
     static var fileURL: URL {
