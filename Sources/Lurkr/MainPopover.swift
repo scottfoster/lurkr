@@ -310,7 +310,7 @@ final class MainPopoverViewController: NSViewController {
         let row = HoverableRow()
         row.translatesAutoresizingMaskIntoConstraints = false
         row.onClick = { [weak self] in
-            if isLive { self?.onOpenStream?(login) }
+            self?.onOpenStream?(login)
         }
 
         let dot = NSView()
