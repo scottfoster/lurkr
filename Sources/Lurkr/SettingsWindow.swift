@@ -138,7 +138,6 @@ final class SettingsWindowController: NSWindowController {
             ]
         ))
 
-        // About link footer
         let aboutBtn = NSButton(title: "About Lurkr…",
                                 target: self,
                                 action: #selector(aboutClicked))
@@ -151,7 +150,21 @@ final class SettingsWindowController: NSWindowController {
                 .foregroundColor: NSColor.linkColor,
             ]
         )
-        root.addArrangedSubview(aboutBtn)
+        let quitBtn = NSButton(title: "Quit Lurkr", target: NSApp, action: #selector(NSApplication.terminate(_:)))
+        quitBtn.bezelStyle = .rounded
+        quitBtn.controlSize = .small
+        quitBtn.keyEquivalent = "q"
+        quitBtn.keyEquivalentModifierMask = [.command]
+
+        let footer = NSStackView()
+        footer.orientation = .horizontal
+        footer.alignment = .centerY
+        footer.distribution = .gravityAreas
+        footer.translatesAutoresizingMaskIntoConstraints = false
+        footer.addView(aboutBtn, in: .leading)
+        footer.addView(quitBtn, in: .trailing)
+        footer.widthAnchor.constraint(equalToConstant: 388).isActive = true
+        root.addArrangedSubview(footer)
     }
 
     // MARK: - Section / row builders
