@@ -79,6 +79,7 @@ Click the menu bar icon to open the popover.
 - **Open a channel** — click any live card or any name in the favorites list, including offline favorites.
 - **Remove a favorite** — click the ✕ next to a name and confirm.
 - **Refresh now** — the ↻ button. Lurkr also polls on its own schedule.
+- **Quit Lurkr** — open Settings and click **Quit Lurkr**, or press <kbd>⌘</kbd><kbd>Q</kbd> while Settings is open.
 
 A purple dot means live; grey means offline, with the last time they streamed on the right.
 
