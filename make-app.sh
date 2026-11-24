@@ -12,7 +12,7 @@ BUILD_DIR="$PROJECT_DIR/build"
 ICONSET_DIR="$BUILD_DIR/AppIcon.iconset"
 ENTITLEMENTS="$PROJECT_DIR/Lurkr.entitlements"
 PRIVACY_MANIFEST="$PROJECT_DIR/PrivacyInfo.xcprivacy"
-VERSION="1.0.0"
+VERSION="1.1.0"
 
 # Signing: defaults to ad-hoc ("-"). For App Store / Developer ID builds, set:
 #   SIGNING_IDENTITY="Apple Distribution: Your Name (TEAMID)"

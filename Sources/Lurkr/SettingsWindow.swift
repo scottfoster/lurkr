@@ -98,7 +98,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         browserPopup.target = self
         browserPopup.action = #selector(browserChanged)
 
-        let popupWidth: CGFloat = 120
+        let popupWidth: CGFloat = 140
         intervalPopup.translatesAutoresizingMaskIntoConstraints = false
         browserPopup.translatesAutoresizingMaskIntoConstraints = false
         intervalPopup.widthAnchor.constraint(equalToConstant: popupWidth).isActive = true
