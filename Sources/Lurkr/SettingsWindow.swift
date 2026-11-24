@@ -180,21 +180,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
                 .foregroundColor: NSColor.linkColor,
             ]
         )
-        let quitBtn = NSButton(title: "Quit Lurkr", target: NSApp, action: #selector(NSApplication.terminate(_:)))
-        quitBtn.bezelStyle = .rounded
-        quitBtn.controlSize = .small
-        quitBtn.keyEquivalent = "q"
-        quitBtn.keyEquivalentModifierMask = [.command]
-
-        let footer = NSStackView()
-        footer.orientation = .horizontal
-        footer.alignment = .centerY
-        footer.distribution = .gravityAreas
-        footer.translatesAutoresizingMaskIntoConstraints = false
-        footer.addView(aboutBtn, in: .leading)
-        footer.addView(quitBtn, in: .trailing)
-        footer.widthAnchor.constraint(equalToConstant: 388).isActive = true
-        root.addArrangedSubview(footer)
+        root.addArrangedSubview(aboutBtn)
     }
 
     private func makeNotificationGuide() -> NSView {
