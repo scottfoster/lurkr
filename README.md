@@ -76,7 +76,7 @@ Click the menu bar icon to open the popover.
 </div>
 
 - **Add a favorite** — hit <kbd>+</kbd> in the footer, type a Twitch username, press <kbd>Return</kbd>. Lurkr checks the name actually exists before adding it.
-- **Watch a stream** — click any live card, or any live name in the favorites list.
+- **Open a channel** — click any live card or any name in the favorites list, including offline favorites.
 - **Remove a favorite** — click the ✕ next to a name and confirm.
 - **Refresh now** — the ↻ button. Lurkr also polls on its own schedule.
 
