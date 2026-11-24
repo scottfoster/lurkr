@@ -9,47 +9,27 @@ struct Stream: Sendable {
     let thumbnailData: Data?
 }
 
-/// Uses decapi.me, a free public proxy in front of Twitch's API. No auth required.
-/// Endpoints used:
-///   - https://decapi.me/twitch/uptime/<login>       → "Xh Ym" or "<user> is offline" or "User not found"
-///   - https://decapi.me/twitch/title/<login>        → stream title (string)
-///   - https://decapi.me/twitch/game/<login>         → game name (string)
-///   - https://decapi.me/twitch/viewercount/<login>  → integer
 actor TwitchAPI {
     private let session: URLSession
-    private var networkAttempts: Int = 0
-    private var networkFailures: Int = 0
-    private(set) var lastCallHadConnectionError: Bool = false
 
-    init() {
+    init(session: URLSession? = nil) {
         let cfg = URLSessionConfiguration.ephemeral
         cfg.timeoutIntervalForRequest = 10
         cfg.timeoutIntervalForResource = 15
-        self.session = URLSession(configuration: cfg)
+        self.session = session ?? URLSession(configuration: cfg)
     }
 
-    func liveStreams(logins: [String]) async -> [Stream] {
-        networkAttempts = 0
-        networkFailures = 0
-
-        guard !logins.isEmpty else {
-            lastCallHadConnectionError = false
-            return []
-        }
-        let result = await withTaskGroup(of: Stream?.self) { group in
-            for login in logins {
-                group.addTask { await self.fetchIfLive(login: login) }
+    func liveStreams(logins: [String]) async -> [String: StreamStatus] {
+        await withTaskGroup(of: (String, StreamStatus).self) { group in
+            for login in Set(logins.map { $0.lowercased() }) {
+                group.addTask { (login, await self.fetchStatus(login: login)) }
             }
-            var out: [Stream] = []
-            for await s in group {
-                if let s { out.append(s) }
+            var out: [String: StreamStatus] = [:]
+            for await (login, status) in group {
+                out[login] = status
             }
             return out
         }
-        // If >50% of network attempts failed, treat decapi as unreachable.
-        let failRate = networkAttempts > 0 ? Double(networkFailures) / Double(networkAttempts) : 0
-        lastCallHadConnectionError = networkAttempts > 0 && failRate >= 0.5
-        return result
     }
 
     /// Returns true if a user with this login exists on Twitch.
@@ -62,13 +42,16 @@ actor TwitchAPI {
         return Int(trimmed) != nil
     }
 
-    private func fetchIfLive(login: String) async -> Stream? {
-        guard let uptimeRaw = await fetchText(path: "uptime/\(login)") else { return nil }
+    private func fetchStatus(login: String) async -> StreamStatus {
+        guard let uptimeRaw = await fetchText(path: "uptime/\(login)") else { return .unknown }
         let uptime = uptimeRaw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let lower = uptime.lowercased()
-        if lower.contains("offline") || lower.contains("not found") || uptime.isEmpty {
-            return nil
+        if uptime.caseInsensitiveCompare("\(login) is offline") == .orderedSame ||
+            uptime.caseInsensitiveCompare("\(login) is offline.") == .orderedSame {
+            return .offline
         }
+        // HTTP 200 can still contain proxy errors; only an uptime is evidence of live status.
+        guard uptime.range(of: #"^\d+ (?:years?|months?|weeks?|days?|hours?|minutes?|seconds?)(?:, \d+ (?:years?|months?|weeks?|days?|hours?|minutes?|seconds?))*$"#,
+                           options: [.regularExpression, .caseInsensitive]) != nil else { return .unknown }
 
         async let title = fetchText(path: "title/\(login)")
         async let game = fetchText(path: "game/\(login)")
@@ -81,14 +64,14 @@ actor TwitchAPI {
         let viewerCount = Int(viewerStr) ?? 0
         let thumbData = await thumb
 
-        return Stream(
+        return .live(Stream(
             userLogin: login,
             title: titleStr,
             gameName: gameStr,
             viewerCount: viewerCount,
             uptime: uptime,
             thumbnailData: thumbData
-        )
+        ))
     }
 
     private func fetchThumbnail(login: String) async -> Data? {
@@ -98,7 +81,6 @@ actor TwitchAPI {
             guard let http = resp as? HTTPURLResponse, http.statusCode == 200 else { return nil }
             return data
         } catch {
-            // Thumbnail failures are common (offline streamers, CDN flakes); don't count against decapi connectivity.
             return nil
         }
     }
@@ -106,19 +88,14 @@ actor TwitchAPI {
     private func fetchText(path: String) async -> String? {
         guard let escaped = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
               let url = URL(string: "https://decapi.me/twitch/\(escaped)") else { return nil }
-        networkAttempts += 1
         do {
             let (data, resp) = try await session.data(from: url)
             guard let http = resp as? HTTPURLResponse else {
-                networkFailures += 1
                 return nil
             }
-            // 5xx = decapi having problems; count as connection failure.
-            if http.statusCode >= 500 { networkFailures += 1 }
             guard http.statusCode == 200 else { return nil }
             return String(data: data, encoding: .utf8)
         } catch {
-            networkFailures += 1
             return nil
         }
     }

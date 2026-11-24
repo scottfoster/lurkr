@@ -9,6 +9,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let c = StatusBarController()
         controller = c
         UNUserNotificationCenter.current().delegate = c
-        Notifications.requestAuthorization()
+        c.requestNotificationAuthorization()
     }
 }
