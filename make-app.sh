@@ -101,6 +101,7 @@ cat > "$CONTENTS/Info.plist" <<EOF
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
   <key>LSUIElement</key><true/>
+  <key>ITSAppUsesNonExemptEncryption</key><false/>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSHumanReadableCopyright</key><string>© 2026 Singlepeel</string>
 </dict>
