@@ -1,8 +1,7 @@
-#!/usr/bin/env swift
 import AppKit
 
 guard CommandLine.arguments.count >= 2 else {
-    FileHandle.standardError.write("usage: render_icons.swift <output_iconset_dir>\n".data(using: .utf8)!)
+    FileHandle.standardError.write("usage: render_icons <output_iconset_dir>\n".data(using: .utf8)!)
     exit(1)
 }
 
@@ -10,45 +9,17 @@ let outDir = CommandLine.arguments[1]
 
 func drawIcon(size: CGFloat) -> NSImage {
     let img = NSImage(size: NSSize(width: size, height: size), flipped: true) { _ in
-        // Purple rounded background (Twitch brand)
+        // Purple rounded background
         let corner = size * 0.22
         let bg = NSBezierPath(roundedRect: NSRect(x: 0, y: 0, width: size, height: size),
                               xRadius: corner, yRadius: corner)
         NSColor(red: 0.576, green: 0.247, blue: 1.0, alpha: 1.0).setFill()
         bg.fill()
 
-        // White Twitch glitch glyph (16x16 path coords, padded inset)
-        let path = NSBezierPath()
-        path.windingRule = .evenOdd
-        let pad = size * 0.20
-        let glyph = size - 2 * pad
-        let scale = glyph / 16.0
-        func p(_ x: CGFloat, _ y: CGFloat) -> NSPoint {
-            NSPoint(x: pad + x * scale, y: pad + y * scale)
-        }
-
-        path.move(to: p(3.857, 0));   path.line(to: p(1, 2.857))
-        path.line(to: p(1, 13.143));  path.line(to: p(4.429, 13.143))
-        path.line(to: p(4.429, 16));  path.line(to: p(7.286, 13.143))
-        path.line(to: p(9.571, 13.143)); path.line(to: p(14.714, 8))
-        path.line(to: p(14.714, 0));  path.close()
-
-        path.move(to: p(13.571, 7.429))
-        path.line(to: p(11.286, 9.714)); path.line(to: p(9, 9.714))
-        path.line(to: p(7, 11.714));     path.line(to: p(7, 9.714))
-        path.line(to: p(4.429, 9.714));  path.line(to: p(4.429, 1.143))
-        path.line(to: p(13.571, 1.143)); path.close()
-
-        path.move(to: p(10.714, 3.143)); path.line(to: p(11.857, 3.143))
-        path.line(to: p(11.857, 6.571)); path.line(to: p(10.714, 6.571))
-        path.close()
-
-        path.move(to: p(7.571, 3.143));  path.line(to: p(8.714, 3.143))
-        path.line(to: p(8.714, 6.571));  path.line(to: p(7.571, 6.571))
-        path.close()
-
-        NSColor.white.setFill()
-        path.fill()
+        // White Lurkr eye glyph (Sources/Lurkr/Glyph.swift), padded inset
+        let pad = size * 0.18
+        Glyph.draw(in: NSRect(x: pad, y: pad, width: size - 2 * pad, height: size - 2 * pad),
+                   color: .white)
         return true
     }
     return img

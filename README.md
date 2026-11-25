@@ -57,7 +57,7 @@ cd lurkr
 ./make-app.sh --install
 ```
 
-That builds a release binary, renders the app icon, assembles `Lurkr.app`, ad-hoc code-signs it, moves it to `/Applications`, and launches it. Look for the Twitch glyph in your menu bar.
+That builds a release binary, renders the app icon, assembles `Lurkr.app`, ad-hoc code-signs it, moves it to `/Applications`, and launches it. Look for the purple eye in your menu bar.
 
 To build the bundle without installing it, drop the flag:
 
@@ -181,8 +181,9 @@ Sources/Lurkr/
 ├── SettingsWindow.swift      Settings window
 ├── AboutWindow.swift         About window
 ├── Notifications.swift       UNUserNotificationCenter wrapper
-└── Icon.swift                Menu bar glyph, drawn in code as a Bézier path
-Tools/render_icons.swift      Renders the .iconset used to build AppIcon.icns
+├── Icon.swift                Menu bar icon states (grey, purple, badge)
+└── Glyph.swift               The eye glyph, drawn as Bézier paths
+Tools/render_icons/main.swift Renders the .iconset used to build AppIcon.icns
 ```
 
 There are no image assets in this repo — both the menu bar glyph and the app icon are drawn with `NSBezierPath` at build time.

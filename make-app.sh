@@ -13,6 +13,8 @@ ICONSET_DIR="$BUILD_DIR/AppIcon.iconset"
 ENTITLEMENTS="$PROJECT_DIR/Lurkr.entitlements"
 PRIVACY_MANIFEST="$PROJECT_DIR/PrivacyInfo.xcprivacy"
 VERSION="1.1.0"
+# Must increase on every App Store upload of the same VERSION.
+BUILD_NUMBER="2"
 
 # Signing: defaults to ad-hoc ("-"). For App Store / Developer ID builds, set:
 #   SIGNING_IDENTITY="Apple Distribution: Your Name (TEAMID)"
@@ -21,6 +23,16 @@ SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
 # Keychain profile holding notarization credentials, created once via:
 #   xcrun notarytool store-credentials
 NOTARY_PROFILE="${NOTARY_PROFILE:-lurkr-notary}"
+# Alternatively, authenticate with an App Store Connect API key (takes precedence when set):
+#   NOTARY_KEY_ID=ABC123 NOTARY_ISSUER=<issuer-uuid> (key at ~/.appstoreconnect/private_keys/AuthKey_<id>.p8)
+NOTARY_KEY_ID="${NOTARY_KEY_ID:-}"
+NOTARY_ISSUER="${NOTARY_ISSUER:-}"
+if [ -n "$NOTARY_KEY_ID" ]; then
+    NOTARY_AUTH=(--key "$HOME/.appstoreconnect/private_keys/AuthKey_$NOTARY_KEY_ID.p8"
+                 --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER")
+else
+    NOTARY_AUTH=(--keychain-profile "$NOTARY_PROFILE")
+fi
 
 # Args: --install moves the built bundle to /Applications and launches it.
 INSTALL=false
@@ -56,7 +68,11 @@ swift build -c release
 echo "→ Rendering app icons"
 rm -rf "$BUILD_DIR"
 mkdir -p "$ICONSET_DIR"
-swift "$PROJECT_DIR/Tools/render_icons.swift" "$ICONSET_DIR"
+# Compiled together with the app's Glyph.swift so the icon and menu bar glyph share one drawing.
+swiftc -o "$BUILD_DIR/render_icons" \
+    "$PROJECT_DIR/Tools/render_icons/main.swift" \
+    "$PROJECT_DIR/Sources/Lurkr/Glyph.swift"
+"$BUILD_DIR/render_icons" "$ICONSET_DIR"
 
 echo "→ Assembling .app"
 rm -rf "$APP_DIR"
@@ -81,7 +97,7 @@ cat > "$CONTENTS/Info.plist" <<EOF
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleVersion</key><string>$BUILD_NUMBER</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
   <key>LSUIElement</key><true/>
@@ -119,9 +135,7 @@ if [ "$DIST" = true ]; then
     ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$ZIP_PATH"
 
     echo "→ Submitting to Apple (usually a few minutes)"
-    xcrun notarytool submit "$ZIP_PATH" \
-        --keychain-profile "$NOTARY_PROFILE" \
-        --wait
+    xcrun notarytool submit "$ZIP_PATH" "${NOTARY_AUTH[@]}" --wait
 
     echo "→ Stapling ticket"
     xcrun stapler staple "$APP_DIR"
